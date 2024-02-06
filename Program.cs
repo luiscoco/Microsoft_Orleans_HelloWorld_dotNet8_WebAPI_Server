@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.OpenApi.Models;
+using System;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Orleans;
 using Orleans.Hosting;
-using Microsoft.OpenApi.Models; // Necesario para Swagger
-using System;
-using System.Threading.Tasks;
+using Orleans.Configuration;
 
 try
 {
@@ -16,32 +16,39 @@ try
         {
             webBuilder.ConfigureServices(services =>
             {
-                // Añade servicios al contenedor.
                 services.AddControllers();
-                // Añade la herramienta de generación de Swagger
                 services.AddSwaggerGen(c =>
                 {
-                    c.SwaggerDoc("v1", new OpenApiInfo { Title = "Mi API", Version = "v1" });
+                    c.SwaggerDoc("v1", new OpenApiInfo { Title = "My API", Version = "v1" });
+                });
+                // Add CORS services here
+                services.AddCors(options =>
+                {
+                    options.AddPolicy("AllowSpecificOrigin",
+                        builder =>
+                        {
+                            builder.WithOrigins("https://localhost:7013") // Adjust this as necessary
+                                   .AllowAnyHeader()
+                                   .AllowAnyMethod();
+                        });
                 });
             });
 
-            // Usa IWebHostEnvironment para acceder al entorno
             webBuilder.Configure((context, app) =>
             {
-                var env = context.HostingEnvironment;
-
-                // Configura el pipeline de solicitudes HTTP.
-                if (env.IsDevelopment())
+                if (context.HostingEnvironment.IsDevelopment())
                 {
                     app.UseDeveloperExceptionPage();
                     app.UseSwagger();
-                    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Mi API V1"));
+                    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1"));
                 }
 
                 app.UseRouting();
 
-                app.UseAuthorization();
+                // Apply CORS policy here
+                app.UseCors("AllowSpecificOrigin");
 
+                app.UseAuthorization();
                 app.UseEndpoints(endpoints =>
                 {
                     endpoints.MapControllers();
@@ -51,18 +58,19 @@ try
         .UseOrleans(siloBuilder =>
         {
             siloBuilder.UseLocalhostClustering()
+                       .Configure<ClusterOptions>(options =>
+                       {
+                           options.ClusterId = "dev";
+                           options.ServiceId = "OrleansBasics";
+                       })
                        .ConfigureLogging(logging => logging.AddConsole());
-            // Configuración adicional de Orleans según sea necesario
         });
 
     using var host = builder.Build();
-    Console.WriteLine("\n\nPresiona Enter para terminar...\n\n");
+    Console.WriteLine("\n\nPress Enter to terminate...\n\n");
     await host.RunAsync();
-
-    return;
 }
 catch (Exception ex)
 {
     Console.WriteLine(ex);
-    return;
 }
